@@ -90,47 +90,51 @@ export class AuthService {
       where: { email },
       select: ['id', 'email', 'currentChallenge', 'webauthnId'],
     });
-
+  
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-
+  
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: user.currentChallenge,
       expectedOrigin: this.origin,
       expectedRPID: this.rpID,
     });
-
+  
     const { verified, registrationInfo } = verification;
-
+  
     if (verified && registrationInfo) {
+      // Access the credential information through registrationInfo.credential
       const {
-        credentialType,
+        credential,
         credentialDeviceType,
         credentialBackedUp,
       } = registrationInfo;
-
+  
+      // Create new authenticator using the credential properties
       const newAuthenticator = this.authenticatorRepository.create({
+        credentialId: Buffer.from(credential.id).toString('base64url'),
+        credentialPublicKey: credential.publicKey,
+        counter: credential.counter,
         user: user,
         webauthnUserId: user.webauthnId,
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp,
         transports: response.response.transports,
       });
-
+  
       await this.authenticatorRepository.save(newAuthenticator);
 
-      // Clear the challenge
       user.currentChallenge = undefined;
       await this.userRepository.save(user);
-
+  
       return {
         verified,
         user: { id: user.id, email: user.email },
       };
     }
-
+  
     throw new UnauthorizedException('Registration verification failed');
   }
 
@@ -197,7 +201,7 @@ export class AuthService {
         id: authenticator.credentialId,
         publicKey: authenticator.credentialPublicKey,
         counter: 0,
-        transports: []
+        transports: authenticator.transports,
       }
     });
 

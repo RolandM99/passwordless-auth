@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import type {
   AuthenticatorTransportFuture,
   CredentialDeviceType,
@@ -19,6 +19,9 @@ export class User {
   @Column({ nullable: true })
   currentChallenge?: string;
 
+  @OneToMany(() => Authenticator, authenticator => authenticator.user)
+  authenticators: Authenticator[];
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -37,7 +40,7 @@ export class Authenticator {
   @Column({ type: 'bytea' })
   credentialPublicKey: Uint8Array;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, user => user.authenticators, { onDelete: 'CASCADE' })
   user: User;
 
   @Column()
