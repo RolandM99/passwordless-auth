@@ -1,0 +1,34 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@fingerprintjs/fingerprintjs-pro": "^3.11.6",
+    "@simplewebauthn/browser": "^13.1.0",
+    "@simplewebauthn/types": "^12.0.0",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "lucide-react": "^0.471.1",
+    "next": "15.1.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.4",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
