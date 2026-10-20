@@ -2,8 +2,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { startAuthentication } from '@simplewebauthn/browser';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { webAuthnApi } from '@/services/api';
+import { getPasskeyErrorMessage } from '@/services/passkey';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -18,11 +19,17 @@ export default function SigninPage() {
     setLoading(true);
     setError('');
 
+    if (!browserSupportsWebAuthn()) {
+      setError('This browser does not support passkeys.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const options = await webAuthnApi.getAuthenticationOptions(email);
-      
-      const authResult = await startAuthentication(options);
-      
+
+      const authResult = await startAuthentication({ optionsJSON: options });
+
       const verificationResult = await webAuthnApi.verifyAuthentication(email, authResult);
 
       if (verificationResult.accessToken) {
@@ -31,7 +38,7 @@ export default function SigninPage() {
       }
     } catch (err: any) {
       console.error('Authentication error:', err);
-      setError(err.response?.data?.message || 'Authentication failed. Please try again.');
+      setError(getPasskeyErrorMessage(err, 'Authentication failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -73,8 +80,11 @@ export default function SigninPage() {
               disabled={loading}
               className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#3B97B6] hover:bg-[#2d7591] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
             >
-              {loading ? 'Verifying TouchID...' : 'Continue with Fingerprint'}
+              {loading ? 'Verifying...' : 'Sign in with passkey'}
             </button>
+            <p className="text-xs text-center text-gray-500">
+              Use your fingerprint, face, or screen lock.
+            </p>
           </form>
 
           <div className="text-center text-sm">
