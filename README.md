@@ -206,7 +206,7 @@ Then open [http://localhost:3000/signup](http://localhost:3000/signup), enter yo
 
 # 👥 Author <a name="author"></a>
 
-👤 **Roland Manful**
+👤 **Roland Mweze**
 
 - GitHub: [@RolandM99](https://github.com/RolandM99)
 - LinkedIn: [Roland N. Mweze](https://www.linkedin.com/in/roland-mweze/)
