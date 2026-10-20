@@ -1,6 +1,11 @@
-import { WebAuthnCredential } from './../../node_modules/@simplewebauthn/server/script/types/index.d';
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,15 +15,8 @@ import {
   generateAuthenticationOptions,
   verifyRegistrationResponse,
   verifyAuthenticationResponse,
-  VerifiedRegistrationResponse,
-  VerifiedAuthenticationResponse,
 } from '@simplewebauthn/server';
 import type {
-  GenerateRegistrationOptionsOpts,
-  GenerateAuthenticationOptionsOpts,
-  VerifyRegistrationResponseOpts,
-  VerifyAuthenticationResponseOpts,
-  AttestationFormatVerifierOpts,
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
 } from '@simplewebauthn/server';
@@ -26,7 +24,7 @@ import type {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly rpName = 'Your App Name';
+  private readonly rpName = 'Passwordless Auth';
   private readonly rpID: string;
   private readonly origin: string;
 
@@ -44,12 +42,11 @@ export class AuthService {
 
   async generateRegistrationOptions(email: string) {
     let user = await this.userRepository.findOne({ where: { email } });
-    
+
     if (!user) {
-      // Create new user
       user = this.userRepository.create({
         email,
-        webauthnId: Buffer.from(email).toString('base64url'),
+        webauthnId: randomBytes(32).toString('base64url'),
       });
       await this.userRepository.save(user);
     }
@@ -58,6 +55,12 @@ export class AuthService {
       where: { user: { id: user.id } },
     });
 
+    if (authenticators.length > 0) {
+      throw new ConflictException(
+        'An account with this email already exists. Please sign in.',
+      );
+    }
+
     const options = await generateRegistrationOptions({
       rpName: this.rpName,
       rpID: this.rpID,
@@ -65,11 +68,10 @@ export class AuthService {
       userName: user.email,
       attestationType: 'none',
       authenticatorSelection: {
-        residentKey: 'preferred',
-        userVerification: 'preferred',
-        authenticatorAttachment: 'platform',
+        residentKey: 'required',
+        userVerification: 'required',
       },
-      excludeCredentials: authenticators.map(authenticator => ({
+      excludeCredentials: authenticators.map((authenticator) => ({
         id: authenticator.credentialId,
         transports: authenticator.transports,
       })),
@@ -82,39 +84,36 @@ export class AuthService {
     return options;
   }
 
-  async verifyRegistration(
-    email: string,
-    response: RegistrationResponseJSON,
-  ) {
-    const user = await this.userRepository.findOne({ 
+  async verifyRegistration(email: string, response: RegistrationResponseJSON) {
+    const user = await this.userRepository.findOne({
       where: { email },
       select: ['id', 'email', 'currentChallenge', 'webauthnId'],
     });
-  
+
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-  
+
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: user.currentChallenge,
       expectedOrigin: this.origin,
       expectedRPID: this.rpID,
+      // Reject the passkey unless the UV flag shows that biometrics or the screen lock were used
+      requireUserVerification: true,
     });
-  
+
     const { verified, registrationInfo } = verification;
-  
+
     if (verified && registrationInfo) {
       // Access the credential information through registrationInfo.credential
-      const {
-        credential,
-        credentialDeviceType,
-        credentialBackedUp,
-      } = registrationInfo;
-  
-      // Create new authenticator using the credential properties
+      const { credential, credentialDeviceType, credentialBackedUp } =
+        registrationInfo;
+
+      // Create new authenticator using the credential properties.
+      // credential.id is already a base64url string, so store it unchanged.
       const newAuthenticator = this.authenticatorRepository.create({
-        credentialId: Buffer.from(credential.id).toString('base64url'),
+        credentialId: credential.id,
         credentialPublicKey: credential.publicKey,
         counter: credential.counter,
         user: user,
@@ -123,26 +122,25 @@ export class AuthService {
         backedUp: credentialBackedUp,
         transports: response.response.transports,
       });
-  
+
       await this.authenticatorRepository.save(newAuthenticator);
 
-      user.currentChallenge = undefined;
+      // Use null rather than undefined: TypeORM skips undefined fields on save,
+      // so the challenge would stay in the database and could be replayed.
+      user.currentChallenge = null;
       await this.userRepository.save(user);
-  
+
       return {
         verified,
         user: { id: user.id, email: user.email },
       };
     }
-  
+
     throw new UnauthorizedException('Registration verification failed');
   }
 
   async generateAuthenticationOptions(email: string) {
-    const user = await this.userRepository.findOne({ 
-      where: { email },
-      relations: ['authenticators'],
-    });
+    const user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -152,14 +150,19 @@ export class AuthService {
       where: { user: { id: user.id } },
     });
 
+    if (authenticators.length === 0) {
+      throw new UnauthorizedException(
+        'No passkey registered for this account. Please sign up.',
+      );
+    }
+
     const options = await generateAuthenticationOptions({
       rpID: this.rpID,
-      allowCredentials: authenticators.map(authenticator => ({
+      allowCredentials: authenticators.map((authenticator) => ({
         id: authenticator.credentialId,
-        type: 'public-key',
         transports: authenticator.transports,
       })),
-      userVerification: 'preferred',
+      userVerification: 'required',
     });
 
     // Save the current challenge
@@ -173,7 +176,7 @@ export class AuthService {
     email: string,
     response: AuthenticationResponseJSON,
   ) {
-    const user = await this.userRepository.findOne({ 
+    const user = await this.userRepository.findOne({
       where: { email },
       select: ['id', 'email', 'currentChallenge'],
     });
@@ -182,10 +185,10 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    // Look up the credential among this user's passkeys only. Otherwise someone
+    // could sign this user's challenge with their own passkey and get a token for this account.
     const authenticator = await this.authenticatorRepository.findOne({
-      where: { 
-        credentialId: Buffer.from(response.id, 'base64url').toString('base64url'),
-      },
+      where: { credentialId: response.id, user: { id: user.id } },
     });
 
     if (!authenticator) {
@@ -200,20 +203,24 @@ export class AuthService {
       credential: {
         id: authenticator.credentialId,
         publicKey: authenticator.credentialPublicKey,
-        counter: 0,
+        // Postgres returns bigint columns as strings
+        counter: Number(authenticator.counter),
         transports: authenticator.transports,
-      }
+      },
+      requireUserVerification: true,
     });
 
     const { verified } = verification;
 
     if (verified) {
-      // Update the authenticator's counter
+      // Update the counter (catches cloned authenticators) and the backup state
       authenticator.counter = verification.authenticationInfo.newCounter;
+      authenticator.backedUp =
+        verification.authenticationInfo.credentialBackedUp;
       await this.authenticatorRepository.save(authenticator);
 
-      // Clear the challenge
-      user.currentChallenge = undefined;
+      // Clear the challenge so it can't be replayed
+      user.currentChallenge = null;
       await this.userRepository.save(user);
 
       // Generate JWT token

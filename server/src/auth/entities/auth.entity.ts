@@ -24,8 +24,8 @@ export class User {
   @Column({ unique: true })
   webauthnId: Base64URLString;
 
-  @Column({ nullable: true })
-  currentChallenge?: string;
+  @Column({ type: 'varchar', nullable: true })
+  currentChallenge?: string | null;
 
   @OneToMany(() => Authenticator, (authenticator) => authenticator.user)
   authenticators: Authenticator[];
