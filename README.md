@@ -119,7 +119,7 @@ The private key never leaves the device. The server only stores the **public key
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+ and npm
+- [Node.js](https://nodejs.org/) 22+ and npm
 - [PostgreSQL](https://www.postgresql.org/download/) (e.g. [Postgres.app](https://postgresapp.com/) on macOS) and optionally [pgAdmin](https://www.pgadmin.org/)
 - A device with a passkey-capable authenticator (Touch ID, Face ID, Windows Hello, Android, or a security key)
 - A recent Chrome, Safari, Edge, or Firefox
