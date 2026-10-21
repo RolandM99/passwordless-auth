@@ -8,7 +8,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import type {
-  AuthenticatorTransportFuture,
   CredentialDeviceType,
   Base64URLString,
 } from '@simplewebauthn/server';
@@ -67,7 +66,7 @@ export class Authenticator {
   backedUp: boolean;
 
   @Column('simple-array', { nullable: true })
-  transports?: AuthenticatorTransportFuture[];
+  transports?: string[];
 
   @CreateDateColumn()
   createdAt: Date;

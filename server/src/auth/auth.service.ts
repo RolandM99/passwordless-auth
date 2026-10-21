@@ -99,19 +99,14 @@ export class AuthService {
       expectedChallenge: user.currentChallenge,
       expectedOrigin: this.origin,
       expectedRPID: this.rpID,
-      // Reject the passkey unless the UV flag shows that biometrics or the screen lock were used
       requireUserVerification: true,
     });
 
     const { verified, registrationInfo } = verification;
 
     if (verified && registrationInfo) {
-      // Access the credential information through registrationInfo.credential
       const { credential, credentialDeviceType, credentialBackedUp } =
         registrationInfo;
-
-      // Create new authenticator using the credential properties.
-      // credential.id is already a base64url string, so store it unchanged.
       const newAuthenticator = this.authenticatorRepository.create({
         credentialId: credential.id,
         credentialPublicKey: credential.publicKey,
@@ -124,9 +119,6 @@ export class AuthService {
       });
 
       await this.authenticatorRepository.save(newAuthenticator);
-
-      // Use null rather than undefined: TypeORM skips undefined fields on save,
-      // so the challenge would stay in the database and could be replayed.
       user.currentChallenge = null;
       await this.userRepository.save(user);
 
@@ -202,7 +194,7 @@ export class AuthService {
       expectedRPID: this.rpID,
       credential: {
         id: authenticator.credentialId,
-        publicKey: authenticator.credentialPublicKey,
+        publicKey: new Uint8Array(authenticator.credentialPublicKey),
         // Postgres returns bigint columns as strings
         counter: Number(authenticator.counter),
         transports: authenticator.transports,
