@@ -1,4 +1,8 @@
 import { Controller, Post, Body, Get, Query, UseGuards } from '@nestjs/common';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from '@simplewebauthn/server';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -7,7 +11,9 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register/options')
-  async getRegistrationOptions(@Body() body: { email: string }) {
+  async getRegistrationOptions(
+    @Body() body: { email: string },
+  ): Promise<PublicKeyCredentialCreationOptionsJSON> {
     return this.authService.generateRegistrationOptions(body.email);
   }
 
@@ -19,7 +25,9 @@ export class AuthController {
   }
 
   @Post('login/options')
-  async getAuthenticationOptions(@Body() body: { email: string }) {
+  async getAuthenticationOptions(
+    @Body() body: { email: string },
+  ): Promise<PublicKeyCredentialRequestOptionsJSON> {
     return this.authService.generateAuthenticationOptions(body.email);
   }
 

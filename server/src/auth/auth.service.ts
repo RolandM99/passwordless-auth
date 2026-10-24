@@ -17,8 +17,10 @@ import {
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 import type {
-  RegistrationResponseJSON,
   AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 
 @Injectable()
@@ -40,7 +42,9 @@ export class AuthService {
     this.origin = this.configService.get<string>('WEBAUTHN_ORIGIN');
   }
 
-  async generateRegistrationOptions(email: string) {
+  async generateRegistrationOptions(
+    email: string,
+  ): Promise<PublicKeyCredentialCreationOptionsJSON> {
     let user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
@@ -77,7 +81,6 @@ export class AuthService {
       })),
     });
 
-    // Save the current challenge
     user.currentChallenge = options.challenge;
     await this.userRepository.save(user);
 
@@ -131,7 +134,9 @@ export class AuthService {
     throw new UnauthorizedException('Registration verification failed');
   }
 
-  async generateAuthenticationOptions(email: string) {
+  async generateAuthenticationOptions(
+    email: string,
+  ): Promise<PublicKeyCredentialRequestOptionsJSON> {
     const user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
@@ -157,7 +162,6 @@ export class AuthService {
       userVerification: 'required',
     });
 
-    // Save the current challenge
     user.currentChallenge = options.challenge;
     await this.userRepository.save(user);
 
@@ -177,8 +181,6 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    // Look up the credential among this user's passkeys only. Otherwise someone
-    // could sign this user's challenge with their own passkey and get a token for this account.
     const authenticator = await this.authenticatorRepository.findOne({
       where: { credentialId: response.id, user: { id: user.id } },
     });
@@ -195,7 +197,6 @@ export class AuthService {
       credential: {
         id: authenticator.credentialId,
         publicKey: new Uint8Array(authenticator.credentialPublicKey),
-        // Postgres returns bigint columns as strings
         counter: Number(authenticator.counter),
         transports: authenticator.transports,
       },
@@ -205,17 +206,14 @@ export class AuthService {
     const { verified } = verification;
 
     if (verified) {
-      // Update the counter (catches cloned authenticators) and the backup state
       authenticator.counter = verification.authenticationInfo.newCounter;
       authenticator.backedUp =
         verification.authenticationInfo.credentialBackedUp;
       await this.authenticatorRepository.save(authenticator);
 
-      // Clear the challenge so it can't be replayed
       user.currentChallenge = null;
       await this.userRepository.save(user);
 
-      // Generate JWT token
       const payload = { sub: user.id, email: user.email };
       return {
         accessToken: this.jwtService.sign(payload),
